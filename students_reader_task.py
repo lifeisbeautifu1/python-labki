@@ -1,4 +1,4 @@
-from typing import Union, List, Dict
+from typing import Union, List
 from collections import namedtuple
 from datetime import date
 import os.path
@@ -168,8 +168,9 @@ class Student:
                     }]
         }
         """
-        new_line = "\n"
-        return f'{{\n\t"unique_id":\t\t{self.unique_id},\n\t"name":\t\t\t"{self.name}",\n\t"surname":\t\t"{self.surname}",\n\t"group":\t\t{self.group},\n\t"subgroup":\t\t{self.subgroup},\n\t"lab_works_sessions":\t[\n{f",{new_line}".join(list(map(lambda sess : f"{str(sess)}", self.lab_work_sessions)))}]\t\n}}'
+        new_line = ",\n"
+        return f'{{\n\t"unique_id":\t\t{self.unique_id},\n\t"name":\t\t\t"{self.name}",\n\t"surname":\t\t"{self.surname}",\n\t"group":\t\t{self.group},\n\t"subgroup":\t\t{self.subgroup},\n\t"lab_works_sessions":\t[\n{new_line.join(str(v) for v in self.lab_work_sessions)}]\t\n}}'
+        # return new_line.join(str(v) for v in self.lab_work_sessions)
 
     @property
     def unique_id(self) -> int:
@@ -221,11 +222,13 @@ class Student:
         self._surname = val
 
     @property
-    def lab_work_sessions(self):
+    def lab_work_sessions(self) : #-> List[LabWorkSession]:
         """
         Метод доступа для списка лабораторных работ, которые студент посетил или не посетил
         """
-        return self._lab_work_sessions
+        for v in self._lab_work_sessions:
+            yield v
+        # return self._lab_work_sessions
 
     def append_lab_work_session(self, session: LabWorkSession):
         """
@@ -243,7 +246,10 @@ def _load_lab_work_session(json_node) -> LabWorkSession:
     for key in LAB_WORK_SESSION_KEYS:
         if key not in json_node:
             raise KeyError(f"load_lab_work_session:: key \"{key}\" not present in json_node")
-    return ...
+    return LabWorkSession(presence=bool(json_node["presence"]),
+                          lab_work_date=date(*tuple(map(int, json_node['date'].split(':')[::-1]))),
+                          lab_work_number=json_node["lab_work_n"],
+                          lab_work_mark=json_node["lab_work_mark"])
 
 
 def _load_student(json_node) -> Student:
@@ -253,10 +259,24 @@ def _load_student(json_node) -> Student:
         создание самого студента ломаться не должно.
     """
     for key in STUDENT_KEYS:
-        ...
-    student = ...
+        if key not in json_node:
+            raise KeyError(f"load_student:: key \"{key}\" not present in json_node")
+    try:
+        student = Student(unique_id=json_node["unique_id"],
+                        name=json_node["name"],
+                        surname=json_node["surname"],
+                        group=json_node["group"],
+                        subgroup=json_node["subgroup"]
+                        )
+    except:
+        print(f"Error creating Student: {json_node}")
+        return None
     for session in json_node['lab_works_sessions']:
-        ...
+        try:
+            lab = _load_lab_work_session(session)
+            student.append_lab_work_session(lab)
+        except:
+            print(f"Error creating Session: {session}")
     return student
 
 
@@ -283,32 +303,38 @@ def load_students_csv(file_path: str) -> Union[List[Student], None]:
         return None
     with open(file_path, 'r') as filestream:
         list_of_students = []
-
+        students = {}
         for line in filestream:
             currentStudent = line.split(';')
             list_of_students.append(currentStudent)
 
         list_of_students = list_of_students[1:]
-        list_of_students.sort(key=lambda student: int(student[0]))
+        list_of_students.sort(key=lambda student: int(student[UNIQUE_ID]))
 
+        
         for (index, currentStudent) in enumerate(list_of_students):
-            currentStudent[6] = bool(currentStudent[6])
-            for key in [0, 3, 4, 7, 8]:
-                currentStudent[key] = int(currentStudent[key])
-            currentStudent[1] = currentStudent[1][1:-1]
-            currentStudent[2] = currentStudent[2][1:-1]
-            currentStudent[5] = currentStudent[5][1:-1]
-            currentStudent[5] = date(*tuple(map(int, currentStudent[5].split(':')[::-1])))
+            try:
+                currentStudent[6] = bool(currentStudent[STUD_PRESENCE])
+                for key in [UNIQUE_ID, STUD_GROUP, STUD_SUBGROUP, LAB_WORK_NUMBER, LAB_WORK_MARK]:
+                    currentStudent[key] = int(currentStudent[key])
+                currentStudent[STUD_NAME] = currentStudent[STUD_NAME][1:-1]
+                currentStudent[STUD_SURNAME] = currentStudent[STUD_SURNAME][1:-1]
+                currentStudent[LAB_WORK_DATE] = currentStudent[LAB_WORK_DATE][1:-1]
+                currentStudent[LAB_WORK_DATE] = date(*tuple(map(int, currentStudent[LAB_WORK_DATE].split(':')[::-1])))
+            except:
+                print(f"Error parsing student: {currentStudent}")
 
         students = []
         index = 0
         while index < len(list_of_students):
             currentStudent = list_of_students[index]
             lab_works_sessions = []
-            while (index < len(list_of_students) and currentStudent[0] == list_of_students[index][0]):
-                lab_works_sessions.append({"lab_work_date": list_of_students[index][5], "presence": list_of_students[index][6], "lab_work_number": list_of_students[index][7], "lab_work_mark": list_of_students[index][8]})
+            while (index < len(list_of_students) and currentStudent[UNIQUE_ID] == list_of_students[index][UNIQUE_ID]):
+                lab_works_sessions.append({"lab_work_date": list_of_students[index][LAB_WORK_DATE], "presence": list_of_students[index][STUD_PRESENCE], "lab_work_number": list_of_students[index][LAB_WORK_NUMBER], "lab_work_mark": list_of_students[index][LAB_WORK_MARK]})
                 index += 1
-            students.append({"unique_id": currentStudent[0], "name": currentStudent[1], "surname": currentStudent[2], "group": currentStudent[3], "subgroup": currentStudent[4], "lab_works_sessions": lab_works_sessions})
+            students.append({"unique_id": currentStudent[UNIQUE_ID], "name": currentStudent[STUD_NAME], "surname": currentStudent[STUD_SURNAME], "group": currentStudent[STUD_GROUP], "subgroup": currentStudent[STUD_SUBGROUP], "lab_works_sessions": lab_works_sessions})
+
+        
         for (index, currentStudent) in enumerate(students):
             try:
                 student = Student(unique_id=currentStudent["unique_id"],
@@ -318,18 +344,18 @@ def load_students_csv(file_path: str) -> Union[List[Student], None]:
                                 subgroup=currentStudent["subgroup"])
                 for lab in currentStudent["lab_works_sessions"]:
                     try:
-                        student.append_lab_work_session(
-                            LabWorkSession(presence=lab["presence"],
+                        labWork = LabWorkSession(presence=lab["presence"],
                                             lab_work_number=lab["lab_work_number"],
                                             lab_work_mark=lab["lab_work_mark"],
-                                            lab_work_date=lab["lab_work_date"]))
+                                            lab_work_date=lab["lab_work_date"])
+                        student.append_lab_work_session(labWork)
                     except:
                         print(f"Error creating LabWorkSession: {lab}")
                 students[index] = student
             except:
                 print(f"Error parsing student: {currentStudent}")
                 students[index] = None
-        return filter(lambda student: student != None, students)
+        return list(filter(lambda student: student != None, students))
 
 
 def load_students_json(file_path: str) -> Union[List[Student], None]:
@@ -337,22 +363,47 @@ def load_students_json(file_path: str) -> Union[List[Student], None]:
     Загрузка списка студентов из json файла.
     Ошибка создания экземпляра класса Student не должна приводить к поломке всего чтения.
     """
-    ...
+    assert isinstance(file_path, str)
+    if not os.path.exists(file_path):
+        return None
+    with open(file_path, 'r') as filestream:
+        jsonData = json.load(filestream)
+        students = []
+        for student in jsonData['students']:
+            stud = _load_student(student)
+            students.append(stud)
+        return list(filter(lambda student: student != None, students))
 
 
 def save_students_json(file_path: str, students: List[Student]):
     """
     Запись списка студентов в json файл
     """
-    ...
+    assert isinstance(file_path, str)
+    with open(file_path, 'w+') as filestream:
+        new_line = ",\n"
+        print(f"{{\n\t\"students\":\n\t\t[{new_line.join(str(v) for v in students)}]\n}}", file=filestream)
+        # students_str = '{\n\t"students": ['
+        # for (index, student) in enumerate(students):
+        #     if index == 0:
+        #         students_str += str(student)
+        #     else:
+        #         students_str += f',{student}'
+        # students_str += ']\n}'
+        # filestream.write(students_str)
 
 
 def save_students_csv(file_path: str, students: List[Student]):
     """
     Запись списка студентов в csv файл
     """
-    ...
-
+    assert isinstance(file_path, str)
+    with open(file_path, 'w+') as filestream:
+        filestream.write(f"unique_id;name;surname;group;subgroup;date;presence;lab_work_number;lab_work_mark\n")
+        for student in students:
+            for lab in student.lab_work_sessions:
+                filestream.write(f'{student.unique_id};"{student.name}";"{student.surname}";{student.group};{student.subgroup};"{lab.lab_work_date.day}:{lab.lab_work_date.month}:{lab.lab_work_date.year}";{int(lab.presence)};{lab.lab_work_number};{lab.lab_work_mark}\n')
+            
 
 if __name__ == '__main__':
     # Задание на проверку json читалки:
@@ -361,17 +412,28 @@ if __name__ == '__main__':
     # 3. прочитать файл "saved_students.json"
     # Задание на проверку csv читалки:
     # 1.-3. аналогично
-
-    # students = load_students_json('students.json')
-    # students = save_students_json('students_saved.json')
-    # load_students_json('students_saved.json', students)
     
-    students = load_students_csv('students.csv')
-    for student in students:
+    students = load_students_json('students.json')
+    print("Original file\n")
+    for student in students[:5]:
         print(student)
-    # map(print, students)
-    # students = save_students_csv('students_saved.csv')
-    # load_students_csv('students_saved.csv', students)
+    save_students_json('students_saved.json', students)
+    saved_students = load_students_json('students_saved.json')
+    print("Saved file\n")
+    for student in saved_students[:5]:
+        print(student)
+
+
+    # students = load_students_csv('students.csv')
+    # print("Original file\n")
+    # for student in students:
+    #     print(student)
+    # save_students_csv('students_saved.csv', students)
+    # saved_students = load_students_csv('students_saved.csv')
+    # print("Saved file\n")
+    # for student in saved_students:
+    #     print(student)
+    
     
     # for s in students:
         # print(s)
