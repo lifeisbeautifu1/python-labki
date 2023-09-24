@@ -292,6 +292,7 @@ def quadratic_regression_2d(x: np.ndarray, y: np.ndarray, z: np.ndarray, order: 
     """
     https://math.stackexchange.com/questions/2572460/2d-polynomial-regression-with-condition God bless 🙏 
     """
+    # A = [1, x, y, x ** 2, x * y, y ** 2, ...]
     A = []
     for xi, yi in zip(x, y):
         row = []
@@ -463,5 +464,5 @@ if __name__ == "__main__":
     # bi_linear_reg_test()
     # n_linear_reg_test()
     # poly_reg_test()
-    quadratic_regression_2d_test()
+    # quadratic_regression_2d_test()
     pass
