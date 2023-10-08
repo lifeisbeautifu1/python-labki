@@ -1,10 +1,11 @@
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from typing import Tuple
 import numpy as np
 
 
 def test_data(k: float = 1.0, b: float = 0.1, half_disp: float = 0.05, n: int = 100, x_step: float = 0.01) -> \
-        (np.ndarray, np.ndarray):
+        Tuple[np.ndarray, np.ndarray]:
     """
     Генерируюет линию вида y = k*x + b + dy, где dy - аддитивный шум с амплитудой half_disp
     :param k: наклон линии
@@ -15,10 +16,10 @@ def test_data(k: float = 1.0, b: float = 0.1, half_disp: float = 0.05, n: int = 
     :return: кортеж значенией по x и y
     """
     x = np.arange(-(n * x_step) / 2, (n * x_step) / 2, x_step)
-    return (x, np.asarray([k * xi + b + np.random.normal(scale=half_disp) for xi in x]))
+    return x, np.asarray([k * xi + b + np.random.normal(scale=half_disp) for xi in x])
 
 def test_data_2d(kx: float = -2.0, ky: float = 2.0, b: float = 12.0, half_disp: float = 1.01, n: int = 100,
-                 x_step: float = 0.01, y_step: float = 0.01) -> (np.ndarray, np.ndarray, np.ndarray):
+                 x_step: float = 0.01, y_step: float = 0.01) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Генерирует плоскость вида z = kx*x + ky*y + b + dz, где dz - аддитивный шум с амплитудой half_disp
     :param kx: наклон плоскости по x
@@ -35,7 +36,7 @@ def test_data_2d(kx: float = -2.0, ky: float = 2.0, b: float = 12.0, half_disp: 
     # y = np.arange(-(n * y_step) / 2, (n * y_step) / 2, y_step)
     x = np.random.rand(n)
     y = np.random.rand(n)
-    return (x, y, np.asarray([kx * xi + ky * yi + b + np.random.normal(scale=half_disp) for xi, yi in zip(x, y)]))
+    return x, y, np.asarray([kx * xi + ky * yi + b + np.random.normal(scale=half_disp) for xi, yi in zip(x, y)])
 
 def test_data_nd(k: np.ndarray = [1, 2, 3], b: float = 12, dim = 3, half_disp: float = 1.01, n: int = 100):
     points = np.asarray([np.random.randn(n) for _ in range(dim)])
@@ -67,7 +68,7 @@ def distance_sum(x: np.ndarray, y: np.ndarray, k: float, b: float) -> float:
     :param b: значение параметра b (смещение)
     :returns: F(k, b) = (Σ(yi -(k * xi + b))^2)^0.5
     """
-    return sum((yi - (k * xi + b)) ** 2 for xi, yi in zip(x.flat, y.flat)) ** 0.5
+    return np.asarray(sum((yi - (k * xi + b)) ** 2 for xi, yi in zip(x.flat, y.flat)) ** 0.5)
 
 def distance_field(x: np.ndarray, y: np.ndarray, k: np.ndarray, b: np.ndarray) -> np.ndarray:
     """
@@ -82,7 +83,7 @@ def distance_field(x: np.ndarray, y: np.ndarray, k: np.ndarray, b: np.ndarray) -
     """
     return np.asarray([[distance_sum(x, y, ki, bi) for bi in b.flat] for ki in k.flat])
 
-def linear_regression(x: np.ndarray, y: np.ndarray) -> (float, float):
+def linear_regression(x: np.ndarray, y: np.ndarray) -> Tuple[float, float]:
     """
     Линейная регрессия.\n
     Основные формулы:\n
@@ -118,9 +119,17 @@ def linear_regression(x: np.ndarray, y: np.ndarray) -> (float, float):
     :param y: массив значений по y
     :returns: возвращает пару (k, b), которая является решением задачи (Σ(yi -(k * xi + b))^2)->min
     """
-    k = (sum([xi * yi for xi, yi in zip(x.flat, y.flat)]) - sum(x.flat) * sum(y.flat) / len(x.flat)) / (sum([xi * xi for xi in x.flat]) - sum(x.flat) ** 2 / len(x.flat))
-    b = (sum(y.flat) - k * sum(x.flat)) / len(x.flat)
-    return (k, b)
+    x_summ = x.sum()
+    y_summ = y.sum()
+    xx_summ = (x * x).sum()
+    xy_summ = (x * y).sum()
+    one_over_n = 1.0 / x.size
+    k = (xy_summ - x_summ * y_summ * one_over_n) / (xx_summ - x_summ * x_summ * one_over_n) 
+    b = (y_summ - k * x_summ) * one_over_n
+
+    #k = (sum([xi * yi for xi, yi in zip(x.flat, y.flat)]) - sum(x.flat) * sum(y.#flat) / len(x.flat)) / (sum([xi * xi for xi in x.flat]) - sum(x.flat) ** 2 / #len(x.flat))
+    # b = (sum(y.flat) - k * sum(x.flat)) / len(x.flat)
+    return k, b
 
 def bi_linear_regression(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> (float, float, float):
     """
@@ -163,7 +172,8 @@ def bi_linear_regression(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> (float,
     grad(kx, ky, b) = | Σ-zi*yi + ky*yi^2 + kx*xi*yi + b*yi |\n
                       | Σ-zi + yi*ky + xi*kx + b            |\n\n
  
-	Окончательно решение:\n
+  
+    Окончательно решение:\n
     |kx|   |1|\n
     |ky| = |1| -  H(1, 1, 0)^-1 * grad(1, 1, 0)\n
     | b|   |0|\n
@@ -176,8 +186,32 @@ def bi_linear_regression(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> (float,
     kx = 1
     ky = 1
     b = 0
- 
+    x_s = x.sum()
+    y_s = y.sum()
+    xy_s = (x * y).sum()
+    xx_s = (x * x).sum()
+    yy_s = (y * y).sum()
+    zx_s = (z * x).sum()
+    zy_s = (z * y).sum()
+    z_s  = z.sum()
     
+    hessian = np.array([[xx_s, xy_s, x_s],
+                        [xy_s, yy_s, y_s],
+                        [x_s, y_s, x.size]])
+    """
+                      | Σ-zi * xi + xi * yi + xi^2     |\n
+    grad(kx, ky, b) = | Σ-zi * yi + yi^2    + xi * yi  |\n
+                      | Σ-zi      + yi      + xi           |\n\n
+ 
+    """
+    grad = np.array([-zx_s + xy_s + xx_s,
+                     -zy_s + yy_s + xy_s,
+                     -z_s + y_s + x_s])
+    print(np.array((1, 1, 0)) - np.linalg.inv(hessian) @ grad)
+    
+    return np.array((1, 1, 0)) - np.linalg.inv(hessian) @ grad
+   
+
     H = np.linalg.inv(np.matrix([
         [sum([xi ** 2 for xi in x.flat]), sum([xi * yi for xi, yi in zip(x.flat, y.flat)]), sum(x.flat)],
         [sum([xi * yi for xi, yi in zip(x.flat, y.flat)]), sum([yi ** 2 for yi in y.flat]), sum(y.flat)],
@@ -293,14 +327,17 @@ def quadratic_regression_2d(x: np.ndarray, y: np.ndarray, z: np.ndarray, order: 
     https://math.stackexchange.com/questions/2572460/2d-polynomial-regression-with-condition God bless 🙏 
     """
     # A = [1, x, y, x ** 2, x * y, y ** 2, ...]
-    A = []
-    for xi, yi in zip(x, y):
-        row = []
-        for power in range(order):
-            for i in range(power + 1):
-                row.append(xi ** (power - i) * yi ** i)
-        A.append(row)
-    A = np.asarray(A)
+    # A = []
+    # for xi, yi in zip(x, y):
+    #     row = []
+    #     for power in range(order):
+    #         for i in range(power + 1):
+    #             row.append(xi ** (power - i) * yi ** i)
+    #     A.append(row)
+    # A = np.asarray(A)
+    
+    # 2 строчки 😎
+    A = np.asarray([[xi ** (power - i) * yi ** i for power in range(order) for i in range(power + 1)] for xi, yi in zip(x, y)])
     return np.linalg.inv(A.T @ A) @ A.T @ z   
 
 def polynom(x: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -309,7 +346,7 @@ def polynom(x: np.ndarray, b: np.ndarray) -> np.ndarray:
     :param b: массив коэффициентов полинома
     :returns: возвращает полином yi = Σxi^j*bj
     """
-    return [sum(xi ** j * bj for j, bj in enumerate(b)) for xi in x]
+    return np.asarray([sum(xi ** j * bj for j, bj in enumerate(b)) for xi in x])
 
 def distance_field_test() -> None:
     """
@@ -433,7 +470,7 @@ def poly_reg_test() -> None:
     plt.show()
 
 def quadratic_regression_2d_test() -> None:
-    """Description coming soon™"""
+    """Very cool function 😎™"""
     x, y, z = test_data_2d(half_disp=0)
     order = 5
     b = quadratic_regression_2d(x, y, z, order=order)
