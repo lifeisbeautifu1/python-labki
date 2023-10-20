@@ -20,19 +20,19 @@ class LogisticRegression:
             # approximate y with linear combination of weights and x, plus bias
             y_pred = np.dot(X, self.weights) + self.bias
             # apply sigmoid function
-            y_pred = self._sigmoid(y_pred)
+            logits = self._sigmoid(y_pred)
 
             # compute gradients
-            dw = (1 / n_samples) * np.dot(X.T, (y_pred - y))
-            db = (1 / n_samples) * np.sum(y_pred - y)
+            dw = np.dot(X.T, (logits - y))
+            db = np.sum(logits - y)
             # update parameters
             self.weights -= self.lr * dw
             self.bias -= self.lr * db
 
     def predict(self, X):
         y_pred = np.dot(X, self.weights) + self.bias
-        y_predicted = self._sigmoid(y_pred)
-        y_predicted_cls = [1 if i > 0.5 else 0 for i in y_predicted]
+        logits = self._sigmoid(y_pred)
+        y_predicted_cls = [1 if i > 0.5 else 0 for i in logits]
         return np.array(y_predicted_cls)
 
     def _sigmoid(self, x):
