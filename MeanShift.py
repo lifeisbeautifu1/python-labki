@@ -4,38 +4,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.datasets import make_blobs
 
+np.random.seed(42)
 GROUP_DISTANCE_TOLERANCE = 0.1
-MIN_DISTANCE = 0.000001
+MIN_DISTANCE = 1e-3
 
+def euclidean_distance(x1, x2):
+    return np.sqrt(np.sum((np.array(x1) - np.array(x2)) ** 2))
 
-def euclidean_dist(pointA, pointB):
-    if(len(pointA) != len(pointB)):
-        raise Exception("expected point dimensionality to match")
-    total = float(0)
-    for dimension in range(0, len(pointA)):
-        total += (pointA[dimension] - pointB[dimension])**2
-    return math.sqrt(total)
-
-
-def gaussian_kernel(distance, bandwidth):
-    euclidean_distance = np.sqrt(((distance)**2).sum(axis=1))
-    val = (1/(bandwidth*math.sqrt(2*math.pi))) * np.exp(-0.5*((euclidean_distance / bandwidth))**2)
-    return val
-
-
-def multivariate_gaussian_kernel(distances, bandwidths):
-
-    # Number of dimensions of the multivariate gaussian
-    dim = len(bandwidths)
-
-    # Covariance matrix
-    cov = np.multiply(np.power(bandwidths, 2), np.eye(dim))
-
-    # Compute Multivariate gaussian (vectorized implementation)
-    exponent = -0.5 * np.sum(np.multiply(np.dot(distances, np.linalg.inv(cov)), distances), axis=1)
-    val = (1 / np.power((2 * math.pi), (dim/2)) * np.power(np.linalg.det(cov), 0.5)) * np.exp(exponent)
-
-    return val
+# https://en.wikipedia.org/wiki/Radial_basis_function_kernel
+def gaussian_kernel(x, σ):
+    squared_euclidean_distance = np.sqrt(((x)**2).sum())
+    return  (1 / (σ * (2 * np.pi) ** 0.5)) * np.exp(-0.5 *((squared_euclidean_distance / σ)) ** 2)
 
 
 class PointGrouper(object):
@@ -68,110 +47,85 @@ class PointGrouper(object):
     def _distance_to_group(self, point, group):
         min_distance = sys.float_info.max
         for pt in group:
-            dist = euclidean_dist(point, pt)
+            dist = euclidean_distance(point, pt)
             if dist < min_distance:
                 min_distance = dist
         return min_distance
 
-
-
 class MeanShift(object):
     def __init__(self, kernel=gaussian_kernel):
-        if kernel == 'multivariate_gaussian':
-            kernel = multivariate_gaussian_kernel
         self.kernel = kernel
 
-    def cluster(self, points, kernel_bandwidth=1, iteration_callback=None):
-        points = np.array([[float(v) for v in point] for point in points])
-        if(iteration_callback):
-            iteration_callback(points, 0)
-        shift_points = np.array(points)
+    def cluster(self, points, σ=1):
+        shifted_points = points.copy()
+
         max_min_dist = 1
         iteration_number = 0
 
-        still_shifting = [True] * points.shape[0]
+        done_shifting = [False] * points.shape[0]
+
+        # untill maximum of all distances reach epsilon
         while max_min_dist > MIN_DISTANCE:
-            # print max_min_dist
             max_min_dist = 0
             iteration_number += 1
-            for i in range(0, len(shift_points)):
-                if not still_shifting[i]:
+
+            for i in range(0, len(shifted_points)):
+
+                if done_shifting[i]:
                     continue
-                p_new = shift_points[i]
-                p_new_start = p_new
-                p_new = self._shift_point(p_new, points, kernel_bandwidth)
-                dist = euclidean_dist(p_new, p_new_start)
+
+                p_new_start = shifted_points[i]
+                p_new = self._shift_point(p_new_start, points, σ)
+                dist = euclidean_distance(p_new, p_new_start)
+
                 if dist > max_min_dist:
                     max_min_dist = dist
+
                 if dist < MIN_DISTANCE:
-                    still_shifting[i] = False
-                shift_points[i] = p_new
-            if iteration_callback:
-                iteration_callback(shift_points, iteration_number)
+                    done_shifting[i] = True
+
+                shifted_points[i] = p_new
+            
         point_grouper = PointGrouper()
-        group_assignments = point_grouper.group_points(shift_points.tolist())
-        return MeanShiftResult(points, shift_points, group_assignments)
+        group_assignments = point_grouper.group_points(shifted_points)
+        return points, shifted_points, group_assignments
 
-    def _shift_point(self, point, points, kernel_bandwidth):
+    def _shift_point(self, point, points, σ):
         # from http://en.wikipedia.org/wiki/Mean-shift
-        points = np.array(points)
+        shift_x = 0.0
+        shift_y = 0.0
+        scale_factor = 0.0
 
-        # numerator
-        point_weights = self.kernel(point-points, kernel_bandwidth)
-        tiled_weights = np.tile(point_weights, [len(point), 1])
-        # denominator
-        denominator = sum(point_weights)
-        shifted_point = np.multiply(tiled_weights.transpose(), points).sum(axis=0) / denominator
-        return shifted_point
+        for other_point in points:
+            # numerator
+            dist = euclidean_distance(point, other_point)
+            weight = self.kernel(dist, σ)
+            shift_x += other_point[0] * weight
+            shift_y += other_point[1] * weight
+            # denominator
+            scale_factor += weight
+        shift_x = shift_x / scale_factor
+        shift_y = shift_y / scale_factor
+        return [shift_x, shift_y]
 
-        # ***************************************************************************
-        # ** The above vectorized code is equivalent to the unrolled version below **
-        # ***************************************************************************
-        # shift_x = float(0)
-        # shift_y = float(0)
-        # scale_factor = float(0)
-        # for p_temp in points:
-        #     # numerator
-        #     dist = ms_utils.euclidean_dist(point, p_temp)
-        #     weight = self.kernel(dist, kernel_bandwidth)
-        #     shift_x += p_temp[0] * weight
-        #     shift_y += p_temp[1] * weight
-        #     # denominator
-        #     scale_factor += weight
-        # shift_x = shift_x / scale_factor
-        # shift_y = shift_y / scale_factor
-        # return [shift_x, shift_y]
-
-
-class MeanShiftResult:
-    def __init__(self, original_points, shifted_points, cluster_ids):
-        self.original_points = original_points
-        self.shifted_points = shifted_points
-        self.cluster_ids = cluster_ids
 
 if __name__ == "__main__":
     # data = np.genfromtxt('data.csv', delimiter=',')
 
-    np.random.seed(42)
-    data, y = make_blobs(n_samples=100, centers=5, n_features=2)
+    data, y = make_blobs(centers=5, n_samples=200, random_state=40)
 
     ms = MeanShift()
-    mean_shift_result = ms.cluster(data)
-
-    original_points =  mean_shift_result.original_points
-    shifted_points = mean_shift_result.shifted_points
-    cluster_assignments = mean_shift_result.cluster_ids
+    original_points, shifted_points, cluster_assignments = ms.cluster(data)
 
     x = original_points[:, 0]
     y = original_points[:, 1]
-    Cluster = cluster_assignments
     centers = shifted_points
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    scatter = ax.scatter(x, y, c=Cluster, s=50)
 
-    for i, j in centers:
-        ax.scatter(i, j, s=50, c='red', marker='+')
+    fig, ax = plt.subplots(figsize=(12, 8))
+    scatter = ax.scatter(x, y, c=cluster_assignments, s=50)
+
+    for x, y in centers:
+        ax.scatter(x, y, c='black', marker='x', linewidth=2)
 
     plt.show()
