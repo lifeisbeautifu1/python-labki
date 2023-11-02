@@ -1,4 +1,3 @@
-import math
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,13 +8,7 @@ GROUP_DISTANCE_TOLERANCE = 0.1
 MIN_DISTANCE = 1e-3
 
 def euclidean_distance(x1, x2):
-    return np.sqrt(np.sum((np.array(x1) - np.array(x2)) ** 2))
-
-# https://en.wikipedia.org/wiki/Radial_basis_function_kernel
-def gaussian_kernel(x, σ):
-    squared_euclidean_distance = np.sqrt(((x)**2).sum())
-    return  (1 / (σ * (2 * np.pi) ** 0.5)) * np.exp(-0.5 *((squared_euclidean_distance / σ)) ** 2)
-
+    return np.sqrt(np.sum((x1 - x2) ** 2))
 
 class PointGrouper(object):
     def group_points(self, points):
@@ -53,21 +46,16 @@ class PointGrouper(object):
         return min_distance
 
 class MeanShift(object):
-    def __init__(self, kernel=gaussian_kernel):
-        self.kernel = kernel
-
     def cluster(self, points, σ=1):
         shifted_points = points.copy()
 
         max_min_dist = 1
-        iteration_number = 0
 
         done_shifting = [False] * points.shape[0]
 
         # untill maximum of all distances reach epsilon
         while max_min_dist > MIN_DISTANCE:
             max_min_dist = 0
-            iteration_number += 1
 
             for i in range(0, len(shifted_points)):
 
@@ -99,7 +87,7 @@ class MeanShift(object):
         for other_point in points:
             # numerator
             dist = euclidean_distance(point, other_point)
-            weight = self.kernel(dist, σ)
+            weight = self._gaussian_kernel(dist, σ)
             shift_x += other_point[0] * weight
             shift_y += other_point[1] * weight
             # denominator
@@ -107,6 +95,11 @@ class MeanShift(object):
         shift_x = shift_x / scale_factor
         shift_y = shift_y / scale_factor
         return [shift_x, shift_y]
+
+    def _gaussian_kernel(self, x, σ):
+        # https://en.wikipedia.org/wiki/Radial_basis_function_kernel
+        squared_euclidean_distance = np.sqrt(((x)**2).sum())
+        return  (1 / (σ * (2 * np.pi) ** 0.5)) * np.exp(-0.5 *((squared_euclidean_distance / σ)) ** 2)
 
 
 if __name__ == "__main__":
@@ -126,6 +119,6 @@ if __name__ == "__main__":
     scatter = ax.scatter(x, y, c=cluster_assignments, s=50)
 
     for x, y in centers:
-        ax.scatter(x, y, c='black', marker='x', linewidth=2)
+        ax.scatter(x, y, c='red', marker='x', linewidth=2)
 
     plt.show()

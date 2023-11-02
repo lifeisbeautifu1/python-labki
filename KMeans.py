@@ -95,7 +95,7 @@ class KMeans:
             ax.scatter(*point)
 
         for point in self.centroids:
-            ax.scatter(*point, marker="x", color="black", linewidth=2)
+            ax.scatter(*point, marker="x", color="red", linewidth=2)
 
         plt.show()
 
